@@ -1,26 +1,5 @@
-from faker import Faker
-
-fake = Faker()
-
 class TestData:
-
-    @staticmethod
-    def generate_user_data():
-        """Генерация случайных данных пользователя"""
-        return {
-            "email": fake.email(),
-            "password": fake.password(length=8),
-            "name": fake.first_name()
-        }
-
-    @staticmethod
-    def generate_user_without_field(field_to_remove):
-        """Генерация данных пользователя без указанного поля"""
-        user_data = TestData.generate_user_data()
-        if field_to_remove in user_data:
-            del user_data[field_to_remove]
-        return user_data
-
+    # Статические данные пользователей
     EXISTING_USER = {
         "email": "evalx95@gmail.com",
         "password": "tests123",
@@ -47,9 +26,10 @@ class TestData:
         }
     ]
 
-    
+    # Статические данные для ингредиентов
     DEFAULT_INGREDIENTS = ["60d3b41abdacab0026a733c6", "61c0c5a71d1f82001bdaaa6f"]
     
+    # Статические методы для получения данных (без генерации)
     @staticmethod
     def get_valid_ingredients():
         """Возвращает валидные ингредиенты для создания заказа"""
@@ -78,6 +58,7 @@ class TestData:
             "ingredients": [TestData.DEFAULT_INGREDIENTS[0]]
         }
 
+    # Сообщения об ошибках
     ERROR_MESSAGES = {
         "user_exists": "User already exists",
         "missing_fields": "Email, password and name are required fields",

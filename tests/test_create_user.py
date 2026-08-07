@@ -1,39 +1,45 @@
 import pytest
 import allure
-from ..data import TestData
-from ..helpers import UserHelper
+from data import TestData
+from helpers import UserHelper, generate_user_data, generate_user_without_field
 
 
 @pytest.fixture
 def create_and_delete_user():
-    user_data = TestData.generate_user_data()
-    response = UserHelper.create_user(user_data)
-    assert response.status_code == 200, f"Не удалось создать пользователя: {response.text}"
+    """Фикстура для создания и удаления тестового пользователя"""
+    max_attempts = 5
     
-    response_data = response.json()
-    token = response_data.get('accessToken')
-    if token and token.startswith('Bearer '):
-        token = token[7:]
-    
-    allure.attach(f"Создан пользователь: {user_data['email']}", name="Создание пользователя", attachment_type=allure.attachment_type.TEXT)
-    
-    yield user_data, response_data, token
-    
-    with allure.step("Удаление созданного пользователя"):
-        if token:
-            try:
-                delete_response = UserHelper.delete_user(token)
-                if delete_response.status_code == 202:
-                    allure.attach("Пользователь успешно удален", name="Результат очистки", attachment_type=allure.attachment_type.TEXT)
-                else:
-                    allure.attach(f"Неожиданный статус удаления: {delete_response.status_code}", name="Результат очистки", attachment_type=allure.attachment_type.TEXT)
-            except Exception as e:
-                allure.attach(str(e), name="Ошибка удаления пользователя", attachment_type=allure.attachment_type.TEXT)
-                pytest.fail(f"Не удалось удалить пользователя: {e}")
+    for attempt in range(max_attempts):
+        user_data = generate_user_data()
+        response = UserHelper.create_user(user_data)
+        
+        if response.status_code == 200:
+            response_data = response.json()
+            token = response_data.get('accessToken')
+            if token and token.startswith('Bearer '):
+                token = token[7:]
+            
+            yield user_data, response_data, token
+            
+            with allure.step("Удаление созданного пользователя"):
+                if token:
+                    try:
+                        UserHelper.delete_user(token)
+                    except Exception as e:
+                        allure.attach(str(e), name="Ошибка удаления пользователя", attachment_type=allure.attachment_type.TEXT)
+            return
+        
+        elif response.status_code == 403 and "User already exists" in response.text:
+            if attempt == max_attempts - 1:
+                pytest.fail(f"Не удалось создать уникального пользователя после {max_attempts} попыток")
+            continue
+        else:
+            pytest.fail(f"Не удалось создать пользователя: {response.status_code}, {response.text}")
 
 
 @pytest.fixture
 def existing_user():
+    """Фикстура для получения существующего пользователя"""
     user_data = TestData.EXISTING_USER.copy()
     token = None
     
@@ -43,15 +49,12 @@ def existing_user():
         token = response.json().get('accessToken')
         if token and token.startswith('Bearer '):
             token = token[7:]
-        allure.attach("Создан новый пользователь", name="Подготовка", attachment_type=allure.attachment_type.TEXT)
     elif response.status_code == 403 and "User already exists" in response.text:
-        
         login_response = UserHelper.login_user(user_data)
         assert login_response.status_code == 200, "Не удалось залогиниться"
         token = login_response.json().get('accessToken')
         if token and token.startswith('Bearer '):
             token = token[7:]
-        allure.attach("Использован существующий пользователь", name="Подготовка", attachment_type=allure.attachment_type.TEXT)
     else:
         pytest.fail(f"Не удалось создать или получить пользователя: {response.text}")
     
@@ -61,7 +64,6 @@ def existing_user():
         if token:
             try:
                 UserHelper.delete_user(token)
-                allure.attach("Пользователь удален", name="Результат очистки", attachment_type=allure.attachment_type.TEXT)
             except Exception as e:
                 allure.attach(str(e), name="Ошибка удаления", attachment_type=allure.attachment_type.TEXT)
 
@@ -75,15 +77,11 @@ class TestUserCreation:
         
         with allure.step("Проверка данных созданного пользователя"):
             assert response_data.get('success') is True, "success должно быть True"
-            
             user = response_data.get('user', {})
-            assert user.get('email') == user_data['email'], "Email не совпадает"
-            assert user.get('name') == user_data['name'], "Name не совпадает"
-            
+            assert user.get('email') == user_data['email'], f"Email не совпадает. Ожидалось: {user_data['email']}, Получено: {user.get('email')}"
+            assert user.get('name') == user_data['name'], f"Name не совпадает. Ожидалось: {user_data['name']}, Получено: {user.get('name')}"
             assert 'accessToken' in response_data, "Отсутствует accessToken"
             assert 'refreshToken' in response_data, "Отсутствует refreshToken"
-            
-            allure.attach(f"Пользователь {user_data['email']} успешно создан", name="Результат теста", attachment_type=allure.attachment_type.TEXT)
 
     @allure.title("Создание существующего пользователя")
     @allure.description("Проверка ошибки при попытке создать уже зарегистрированного пользователя")
@@ -94,32 +92,25 @@ class TestUserCreation:
             response = UserHelper.create_user(user_data)
         
         with allure.step("Проверка ответа с ошибкой"):
-            assert response.status_code == 403, "Ожидался статус 403"
-            
+            assert response.status_code == 403, f"Ожидался статус 403, получен {response.status_code}"
             response_data = response.json()
             assert response_data.get('success') is False, "success должно быть False"
-            assert response_data.get('message') == TestData.ERROR_MESSAGES['user_exists'], "Неверное сообщение об ошибке"
-            
-            allure.attach(f"Попытка создать дубликат {user_data['email']} вернула ошибку", name="Результат теста", attachment_type=allure.attachment_type.TEXT)
+            assert response_data.get('message') == TestData.ERROR_MESSAGES['user_exists'], f"Неверное сообщение об ошибке. Ожидалось: {TestData.ERROR_MESSAGES['user_exists']}, Получено: {response_data.get('message')}"
 
     @allure.title("Создание пользователя без обязательного поля")
     @allure.description("Проверка ошибки при попытке создать пользователя без одного из обязательных полей")
     @pytest.mark.parametrize("field_to_remove", ['email', 'password', 'name'])
     def test_create_user_without_field(self, field_to_remove):
         with allure.step(f"Генерация данных без поля '{field_to_remove}'"):
-            user_data = TestData.generate_user_without_field(field_to_remove)
+            user_data = generate_user_without_field(field_to_remove)
             allure.attach(f"Отсутствует поле: {field_to_remove}", name="Параметры теста", attachment_type=allure.attachment_type.TEXT)
         
         with allure.step("Отправка запроса на создание пользователя"):
             response = UserHelper.create_user(user_data)
         
         with allure.step("Проверка ответа с ошибкой"):
-            assert response.status_code == 403, "Ожидался статус 403"
-            
+            assert response.status_code == 403, f"Ожидался статус 403, получен {response.status_code}"
             response_data = response.json()
             assert response_data.get('success') is False, "success должно быть False"
-            assert response_data.get('message') == TestData.ERROR_MESSAGES['missing_fields'], "Неверное сообщение об ошибке"
-            
+            assert response_data.get('message') == TestData.ERROR_MESSAGES['missing_fields'], f"Неверное сообщение об ошибке. Ожидалось: {TestData.ERROR_MESSAGES['missing_fields']}, Получено: {response_data.get('message')}"
             assert 'accessToken' not in response_data, "Пользователь не должен создаваться без обязательных полей"
-            
-            allure.attach(f"Запрос без поля {field_to_remove} вернул ошибку", name="Результат теста", attachment_type=allure.attachment_type.TEXT)

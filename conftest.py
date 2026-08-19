@@ -27,7 +27,7 @@ def create_and_delete_user():
             response_data = response.json()
             token = extract_token(response)
             
-            yield user_data, response_data, token
+            yield user_data, token
             
             with allure.step("Удаление созданного пользователя"):
                 if token:
@@ -85,3 +85,52 @@ def existing_user():
                     name="Ошибка удаления", 
                     attachment_type=allure.attachment_type.TEXT
                 )
+
+
+@pytest.fixture
+def valid_ingredients():
+    """Фикстура для получения валидных ингредиентов"""
+    return TestData.DEFAULT_INGREDIENTS
+
+
+@pytest.fixture
+def invalid_ingredients():
+    """Фикстура для невалидных ингредиентов"""
+    return ["invalid_hash_1", "invalid_hash_2"]
+
+
+@pytest.fixture
+def empty_ingredients():
+    """Фикстура для пустого списка ингредиентов"""
+    return []
+
+
+@pytest.fixture
+def create_order_and_get_number():
+    """Фикстура для создания заказа и получения его номера"""
+    user_data = generate_user_data()
+    user_response = UserAPI.create_user(user_data)
+    token = extract_token(user_response)
+    
+    ingredients = TestData.get_valid_ingredients()
+    order_response = OrderAPI.create_order(token, ingredients)
+    order_number = order_response.json().get('order', {}).get('number')
+    
+    yield user_data, token, order_number
+    
+    if token:
+        UserAPI.delete_user(token)
+
+
+@pytest.fixture
+def authorized_user_token():
+    """Фикстура для получения токена авторизованного пользователя"""
+    user_data = generate_user_data()
+    response = UserAPI.create_user(user_data)
+    token = extract_token(response)
+    
+    yield user_data, token
+    
+    
+    if token:
+        UserAPI.delete_user(token)

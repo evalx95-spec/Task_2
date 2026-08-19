@@ -1,40 +1,8 @@
 import pytest
 import allure
 from data import TestData
-from helpers import UserHelper, generate_user_data
-
-
-@pytest.fixture
-def create_and_delete_user():
-    """Фикстура для создания и удаления тестового пользователя"""
-    max_attempts = 5
-    
-    for attempt in range(max_attempts):
-        user_data = generate_user_data()
-        response = UserHelper.create_user(user_data)
-        
-        if response.status_code == 200:
-            response_data = response.json()
-            token = response_data.get('accessToken')
-            if token and token.startswith('Bearer '):
-                token = token[7:]
-            
-            yield user_data, token
-            
-            with allure.step("Удаление созданного пользователя"):
-                if token:
-                    try:
-                        UserHelper.delete_user(token)
-                    except Exception as e:
-                        allure.attach(str(e), name="Ошибка удаления пользователя", attachment_type=allure.attachment_type.TEXT)
-            return
-        
-        elif response.status_code == 403 and "User already exists" in response.text:
-            if attempt == max_attempts - 1:
-                pytest.fail(f"Не удалось создать уникального пользователя после {max_attempts} попыток")
-            continue
-        else:
-            pytest.fail(f"Не удалось создать пользователя: {response.status_code}, {response.text}")
+from api_client import UserAPI
+from helpers import generate_user_data, generate_unique_email   
 
 
 class TestUpdateUser:
@@ -45,16 +13,17 @@ class TestUpdateUser:
         user_data, token = create_and_delete_user
         
         with allure.step("Генерация нового email"):
-            new_email = generate_user_data()['email']
+            new_email = generate_unique_email()  
             update_data = {"email": new_email}
             allure.attach(f"Новый email: {new_email}", name="Данные для обновления", 
                          attachment_type=allure.attachment_type.TEXT)
         
         with allure.step("Обновление email пользователя"):
-            response = UserHelper.update_user(token, update_data)
+            response = UserAPI.update_user(token, update_data)
         
         with allure.step("Проверка успешного обновления"):
-            assert response.status_code == 200, f"Ожидался 200, получен {response.status_code}"
+            assert response.status_code == 200, \
+                f"Ожидался 200, получен {response.status_code}. Ответ: {response.text}"
             response_data = response.json()
             assert response_data.get('success') is True, "success должно быть True"
             assert 'user' in response_data, "В ответе должен быть объект user"
@@ -76,10 +45,11 @@ class TestUpdateUser:
                          attachment_type=allure.attachment_type.TEXT)
         
         with allure.step("Обновление пароля пользователя"):
-            response = UserHelper.update_user(token, update_data)
+            response = UserAPI.update_user(token, update_data)
         
         with allure.step("Проверка успешного обновления"):
-            assert response.status_code == 200, f"Ожидался 200, получен {response.status_code}"
+            assert response.status_code == 200, \
+                f"Ожидался 200, получен {response.status_code}. Ответ: {response.text}"
             response_data = response.json()
             assert response_data.get('success') is True, "success должно быть True"
             
@@ -87,8 +57,9 @@ class TestUpdateUser:
                 "email": user_data['email'],
                 "password": new_password
             }
-            login_response = UserHelper.login_user(login_data)
-            assert login_response.status_code == 200, "Не удалось залогиниться с новым паролем"
+            login_response = UserAPI.login_user(login_data)
+            assert login_response.status_code == 200, \
+                f"Не удалось залогиниться с новым паролем. Статус: {login_response.status_code}"
             allure.attach("Пароль успешно изменен", 
                          name="Результат", 
                          attachment_type=allure.attachment_type.TEXT)
@@ -105,10 +76,11 @@ class TestUpdateUser:
                          attachment_type=allure.attachment_type.TEXT)
         
         with allure.step("Обновление имени пользователя"):
-            response = UserHelper.update_user(token, update_data)
+            response = UserAPI.update_user(token, update_data)
         
         with allure.step("Проверка успешного обновления"):
-            assert response.status_code == 200, f"Ожидался 200, получен {response.status_code}"
+            assert response.status_code == 200, \
+                f"Ожидался 200, получен {response.status_code}. Ответ: {response.text}"
             response_data = response.json()
             assert response_data.get('success') is True, "success должно быть True"
             assert 'user' in response_data, "В ответе должен быть объект user"
@@ -128,10 +100,11 @@ class TestUpdateUser:
                          attachment_type=allure.attachment_type.JSON)
         
         with allure.step("Попытка обновления данных без токена"):
-            response = UserHelper.update_user_without_auth(update_data)
+            response = UserAPI.update_user_without_auth(update_data)
         
         with allure.step("Проверка ответа с ошибкой"):
-            assert response.status_code == 401, f"Ожидался 401, получен {response.status_code}"
+            assert response.status_code == 401, \
+                f"Ожидался 401, получен {response.status_code}. Ответ: {response.text}"
             response_data = response.json()
             assert response_data.get('success') is False, "success должно быть False"
             assert response_data.get('message') == TestData.ERROR_MESSAGES['unauthorized'], \
@@ -147,15 +120,18 @@ class TestUpdateUser:
         update_data = generate_user_data()
         
         with allure.step("Попытка обновления данных с неверным токеном"):
-            response = UserHelper.update_user(invalid_token, update_data)
+            response = UserAPI.update_user(invalid_token, update_data)
         
         with allure.step("Проверка ответа с ошибкой"):
-            assert response.status_code in [401, 403], f"Ожидался 401 или 403, получен {response.status_code}"
+            assert response.status_code in [401, 403], \
+                f"Ожидался 401 или 403, получен {response.status_code}. Ответ: {response.text}"
             response_data = response.json()
             assert response_data.get('success') is False, "success должно быть False"
-            allure.attach(f"Статус: {response.status_code}, Сообщение: {response_data.get('message')}", 
-                         name="Результат", 
-                         attachment_type=allure.attachment_type.TEXT)
+            allure.attach(
+                f"Статус: {response.status_code}, Сообщение: {response_data.get('message')}", 
+                name="Результат", 
+                attachment_type=allure.attachment_type.TEXT
+            )
 
     @allure.title("Изменение нескольких полей одновременно")
     @allure.description("Проверка успешного изменения нескольких полей одновременно")
@@ -164,25 +140,33 @@ class TestUpdateUser:
         
         with allure.step("Генерация новых данных для обновления"):
             new_data = generate_user_data()
+            unique_email = generate_unique_email()  
             update_data = {
-                "email": new_data['email'],
+                "email": unique_email,
                 "name": new_data['name']
             }
-            allure.attach(f"Новые данные: {update_data}", 
-                         name="Данные для обновления", 
-                         attachment_type=allure.attachment_type.JSON)
+            allure.attach(
+                f"Новые данные: {update_data}", 
+                name="Данные для обновления", 
+                attachment_type=allure.attachment_type.JSON
+            )
         
         with allure.step("Обновление нескольких полей пользователя"):
-            response = UserHelper.update_user(token, update_data)
+            response = UserAPI.update_user(token, update_data)
         
         with allure.step("Проверка успешного обновления"):
-            assert response.status_code == 200, f"Ожидался 200, получен {response.status_code}"
+            assert response.status_code == 200, \
+                f"Ожидался 200, получен {response.status_code}. Ответ: {response.text}"
             response_data = response.json()
             assert response_data.get('success') is True, "success должно быть True"
             assert 'user' in response_data, "В ответе должен быть объект user"
             user = response_data['user']
-            assert user['email'] == update_data['email'], "Email не обновился"
-            assert user['name'] == update_data['name'], "Имя не обновилось"
-            allure.attach(f"Email: {user['email']}, Имя: {user['name']}", 
-                         name="Обновленные данные", 
-                         attachment_type=allure.attachment_type.TEXT)
+            assert user['email'] == update_data['email'], \
+                f"Email не обновился. Ожидался: {update_data['email']}, Получен: {user['email']}"
+            assert user['name'] == update_data['name'], \
+                f"Имя не обновилось. Ожидалось: {update_data['name']}, Получено: {user['name']}"
+            allure.attach(
+                f"Email: {user['email']}, Имя: {user['name']}", 
+                name="Обновленные данные", 
+                attachment_type=allure.attachment_type.TEXT
+            )

@@ -52,7 +52,7 @@ class OrderAPI:
     def create_order(token, ingredients):
         url = f"{BASE_URL}{ENDPOINTS['create_order']}"
         headers = {"Authorization": f"Bearer {token}"} if token else {}
-        response = requests.post(url, json=ingredients, headers=headers)
+        response = requests.post(url, json={"ingredients": ingredients}, headers=headers)
         return response
 
     @staticmethod

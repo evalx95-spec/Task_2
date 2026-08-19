@@ -1,4 +1,5 @@
 import allure
+import time
 from faker import Faker
 
 fake = Faker()
@@ -19,3 +20,11 @@ def generate_user_without_field(field_to_remove):
     if field_to_remove in user_data:
         del user_data[field_to_remove]
     return user_data
+
+
+def generate_unique_email():
+    """Генерация уникального email с временной меткой"""
+    user_data = generate_user_data()
+    email_parts = user_data['email'].split('@')
+    timestamp = int(time.time() * 1000)  
+    return f"{email_parts[0]}_{timestamp}@{email_parts[1]}"

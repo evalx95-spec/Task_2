@@ -1,0 +1,6 @@
+pytest-9.0.2
+pluggy-1.6.0
+requests==2.31.0
+allure-pytest-2.16.0
+Faker-40.36.0
+cov-7.1.0
